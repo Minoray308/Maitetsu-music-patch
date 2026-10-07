@@ -12,7 +12,7 @@
 
 ## 安装
 
-1. 下载 [BGM_App_MOD.zip](bgm_music_mod/BGM_App_MOD.zip) 并解压。
+1. 下载 [Maitetsu_music_patch_v1.2.3.zip](bgm_music_mod/Maitetsu_music_patch_v1.2.3.zip) 并解压。
 2. 关闭游戏，运行其中的 `BGM_Mod_Manager.exe`。
 3. 选择包含 `MaitetsuLastRun.exe` 的游戏目录，点击“安装／更新”。
 4. 重新启动游戏，进入 BGM 鉴赏。
