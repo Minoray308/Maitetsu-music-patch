@@ -1,0 +1,28 @@
+PASS clean game detected as not installed
+PASS backup folder is not an installed game
+PASS manager in subfolder selects game parent
+PASS manager in game directory keeps target
+PASS empty target rejected
+PASS legacy install detected
+PASS legacy version upgrades
+PASS installed patch.xp3
+PASS installed bgm_music_mod/player.tjs
+PASS installed bgm_music_mod/README.md
+PASS complete current install detected
+PASS optional readme does not affect runtime detection
+PASS patch without player is incomplete
+PASS directory occupying runtime file detected
+PASS repeat install
+PASS uninstall removes mod
+PASS uninstalled state detected
+PASS player without active patch is disabled
+PASS uninstall preserves other files
+PASS repeat uninstall
+PASS foreign or damaged patch detected
+PASS foreign patch preserved
+PASS modified player is not reported installed
+PASS modified file blocks uninstall without partial removal
+PASS failed install rolls back earlier files
+PASS rollback preserves original patch
+PASS game executable untouched
+SUCCESS

@@ -1,0 +1,9 @@
+__pycache__/
+*.py[cod]
+.vs/
+bgm_mod_work/test-engine/
+bgm_mod_work/*testdata*/
+bgm_mod_work/installer-test-*/
+bgm_music_mod/extra_music.func
+bgm_music_mod/original_extra_music.func
+*.tmp

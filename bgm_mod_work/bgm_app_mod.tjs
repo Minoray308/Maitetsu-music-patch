@@ -1,0 +1,316 @@
+// BGM App MOD: patches only the active music gallery, preserving game scripts.
+try {
+// Current is DialogModeManager; its _object owns the active gallery instance.
+var bgmAppPlayer = global.Current._object;
+if (typeof bgmAppPlayer.bgmAppPatched == "undefined") {
+    bgmAppPlayer.bgmAppPatched = true;
+    global.BgmAppModes = ["rep", "all", "rnd", "str", "non"];
+    global.BgmAppLabels = %[rep: "单曲循环", all: "顺序循环", rnd: "随机播放", str: "顺序播放", non: "单曲播放"];
+    bgmAppPlayer.bgmAppOriginalTitle = bgmAppPlayer.updateTitleCaption;
+    bgmAppPlayer.bgmAppOriginalKey = bgmAppPlayer.onKeyDown;
+    bgmAppPlayer.bgmAppOriginalFilter = bgmAppPlayer.setFilter;
+    bgmAppPlayer.bgmAppOriginalFilterStorage = bgmAppPlayer.filterStorage;
+    bgmAppPlayer.bgmAppOriginalUiloaded = bgmAppPlayer.onUiloaded;
+    bgmAppPlayer.bgmAppOriginalAddItem = bgmAppPlayer.internalAddItem;
+    bgmAppPlayer.bgmAppOriginalCaption = bgmAppPlayer.drawCaption;
+    // Keep metadata independently of the currently visible category.
+    bgmAppPlayer.bgmAppItems = %[];
+    for (var i = 0; i < bgmAppPlayer.items.count; ++i)
+        bgmAppPlayer.bgmAppItems[bgmAppPlayer.storages[i]] = bgmAppPlayer.items[i];
+    bgmAppPlayer.internalAddItem = function(item, line) {
+        bgmAppItems[item.storage] = item;
+        return (this.bgmAppOriginalAddItem incontextof this)(item, line);
+    } incontextof bgmAppPlayer;
+    bgmAppPlayer.bgmAppGetItem = function(storage) {
+        storage = string(storage);
+        if (storage.toLowerCase().substr(storage.length - 4) == ".ogg")
+            storage = storage.substr(0, storage.length - 4);
+        return bgmAppItems[Storages.extractStorageName(storage).toUpperCase()];
+    } incontextof bgmAppPlayer;
+    bgmAppPlayer.bgmAppCanFavorite = function(storage) {
+        var index = findStorageNumber(storage);
+        if (index >= 0) return isSeen(index);
+        var item = bgmAppGetItem(storage);
+        return item && (tf.allseen || sf[item.seenflag]);
+    } incontextof bgmAppPlayer;
+    bgmAppPlayer.drawCaption = function(target, title, active, index) {
+        if (isSeen(index) && sf.bgmAppFavorites.find(storages[index]) >= 0)
+            title = "★ " + title;
+        return (this.bgmAppOriginalCaption incontextof this)(target, title, active, index);
+    } incontextof bgmAppPlayer;
+    if (typeof sf.bgmAppFavorites != "Object") sf.bgmAppFavorites = [];
+    bgmAppPlayer.bgmAppFavoritesOnly = false;
+
+    bgmAppPlayer.filterStorage = function(storage) {
+        if (bgmAppFavoritesOnly) return sf.bgmAppFavorites.find(storage.toUpperCase()) >= 0;
+        return (this.bgmAppOriginalFilterStorage incontextof this)(storage);
+    } incontextof bgmAppPlayer;
+    bgmAppPlayer.bgmAppSetupButtons = function(uiSpec) {
+        var buttons = [["bgmAppMode", "togglePlayMode", "filter_vo", "subtab_v"],
+                       ["bgmAppFavorite", "toggleFavorite", "filter_bgm", "subtab_b"],
+                       ["bgmAppList", "toggleFavoritesList", "filter_all", "subtab_s"]];
+        for (var i = 0; i < buttons.count; ++i) {
+            var info = buttons[i], anchor = kag.current.names[info[2]];
+            if (anchor === void) continue;
+            var spec = %[];
+            (Dictionary.assign incontextof spec)(uiSpec[info[3]], 0);
+            spec.name = info[0];
+            spec.class = "toggle";
+            spec.groupName = void;
+            spec.exp = "Current.cmd(\"" + info[1] + "\")";
+            kag.current.addButton(spec);
+            var target = kag.current.names[info[0]];
+            target.bgmAppAnchor = anchor;
+            target.left = anchor.left;
+            target.top = anchor.top + anchor.height + 12;
+            target.visible = true;
+        }
+        bgmAppUpdateButtons();
+    } incontextof bgmAppPlayer;
+    bgmAppPlayer.bgmAppDrawButton = function(target, caption, active, enabled) {
+        if (target === void) return;
+        // Copy all native states, retaining their rounded translucent frame.
+        var anchor = target.bgmAppAnchor;
+        target.copyRect(0, 0, anchor, 0, 0, anchor.imageWidth, anchor.imageHeight);
+        for (var i = 0; i < target.imageWidth / target.width; ++i) {
+            var x = i * target.width;
+            // Replace the baked-in caption using an unlabelled native column.
+            for (var column = 14; column < target.width - 14; ++column)
+                target.copyRect(x + column, 0, anchor, x + 13, 0, 1, target.height);
+        }
+        drawButtonText(target, , caption, %[fontheight: 16, halign: 0]);
+        target.toggle = active;
+        target.enabled = enabled;
+    } incontextof bgmAppPlayer;
+    bgmAppPlayer.bgmAppUpdateButtons = function() {
+        var names = kag.current.names;
+        var storage = playing !== void ? playing : lastplay;
+        var favorite = sf.bgmAppFavorites.find(storage) >= 0;
+        bgmAppDrawButton(names.bgmAppMode, global.BgmAppLabels[mode], mode != "rep", true);
+        bgmAppDrawButton(names.bgmAppFavorite, favorite ? "★ 已收藏" : "☆ 收藏", favorite, bgmAppCanFavorite(storage));
+        bgmAppDrawButton(names.bgmAppList, bgmAppFavoritesOnly ? "返回全部" : "收藏列表", bgmAppFavoritesOnly, true);
+    } incontextof bgmAppPlayer;
+    bgmAppPlayer.onUiloaded = function(options, uiSpec) {
+        (this.bgmAppOriginalUiloaded incontextof this)(options, uiSpec);
+        bgmAppSetupButtons(uiSpec);
+    } incontextof bgmAppPlayer;
+    bgmAppPlayer.toggleFavorite = function() {
+        var storage = playing !== void ? playing : lastplay;
+        if (!bgmAppCanFavorite(storage)) return;
+        var favorite = sf.bgmAppFavorites.find(storage);
+        if (favorite < 0) sf.bgmAppFavorites.add(storage);
+        else sf.bgmAppFavorites.erase(favorite);
+        kag.saveSystemVariables();
+        randomSpool.clear();
+        lastPlayed.clear();
+        if (bgmAppFavoritesOnly && favorite >= 0) stop();
+        reloadCsv();
+        scutil.redraw(1);
+        if (playing !== void) updateNowPlayingCaption();
+        else updateTitleCaption();
+    } incontextof bgmAppPlayer;
+    bgmAppPlayer.toggleFavoritesList = function() {
+        bgmAppFavoritesOnly = !bgmAppFavoritesOnly;
+        // Enter favorites from all categories; native category tabs leave it.
+        if (bgmAppFavoritesOnly && playing !== void && sf.bgmAppFavorites.find(playing) < 0) stop();
+        setFilter("all", true);
+    } incontextof bgmAppPlayer;
+    bgmAppPlayer.bgmAppSeekTarget = void;
+    bgmAppPlayer.bgmAppPausedSeek = void;
+    bgmAppPlayer.bgmAppOriginalResume = bgmAppPlayer.resume;
+    bgmAppPlayer.bgmAppOriginalPlay = bgmAppPlayer.play;
+    bgmAppPlayer.bgmAppOriginalStop = bgmAppPlayer.stop;
+
+    bgmAppPlayer.play = function(storage, exchange) {
+        if (!count) return;
+        bgmAppPausedSeek = void;
+        return (this.bgmAppOriginalPlay incontextof this)(storage, exchange);
+    } incontextof bgmAppPlayer;
+    bgmAppPlayer.stop = function() {
+        bgmAppPausedSeek = void;
+        return (this.bgmAppOriginalStop incontextof this)();
+    } incontextof bgmAppPlayer;
+    bgmAppPlayer.resume = function() {
+        var target = bgmAppPausedSeek;
+        bgmAppPausedSeek = void;
+        (this.bgmAppOriginalResume incontextof this)();
+        if (target !== void) {
+            kag.bgm.buf1.position = target;
+            playtime = target / 1000;
+            tick = System.getTickCount();
+            pausedtick = 0;
+            timer.interval = 1000;
+        }
+    } incontextof bgmAppPlayer;
+
+    bgmAppPlayer.setFilter = function(value, keepFavorites) {
+        if (!keepFavorites) bgmAppFavoritesOnly = false;
+        randomSpool.clear();
+        lastPlayed.clear();
+        (this.bgmAppOriginalFilter incontextof this)(value);
+        if (playing !== void) updateNowPlayingCaption();
+        else updateTitleCaption();
+    } incontextof bgmAppPlayer;
+
+    bgmAppPlayer.updateCurrentPlayMode = function(initial) {
+        var saved = sf.bgmAppMode;
+        if (global.BgmAppModes.find(saved) < 0) {
+            saved = sf.musicplayer == "all" ? "all" : "rep";
+        }
+        if (initial) _mode = saved;
+        else {
+            mode = saved;
+            updatePlayMode(saved);
+        }
+    } incontextof bgmAppPlayer;
+
+    bgmAppPlayer.togglePlayMode = function() {
+        var index = global.BgmAppModes.find(mode);
+        sf.bgmAppMode = global.BgmAppModes[(index + 1) % global.BgmAppModes.count];
+        // Keep the original setting valid if this MOD is removed.
+        sf.musicplayer = sf.bgmAppMode == "all" ? "all" : "one";
+        randomSpool.clear();
+        lastPlayed.clear();
+        kag.saveSystemVariables();
+        updateCurrentPlayMode();
+        if (playing !== void) updateNowPlayingCaption();
+        else updateTitleCaption();
+    } incontextof bgmAppPlayer;
+
+    bgmAppPlayer.updatePlayMode = function(value) {
+        var target = kag.current.names.pmode;
+        if (target) target.toggle = value != "rep";
+    } incontextof bgmAppPlayer;
+
+    bgmAppPlayer.updateTitleCaption = function(title, comment) {
+        if (title === void && playing !== void) {
+            var item = bgmAppGetItem(playing);
+            if (item) { title = item.title; comment = item.comment; }
+        }
+        (this.bgmAppOriginalTitle incontextof this)(title, comment);
+        bgmAppUpdateButtons();
+    } incontextof bgmAppPlayer;
+
+    bgmAppPlayer.updateNowPlaying = function(storage = playing) {
+        resetTimer(1);
+        var item = bgmAppGetItem(storage);
+        updateSeekState(item ? item.totaltime : -1);
+        updateTitleCaption(item ? item.title : void, item ? item.comment : void);
+    } incontextof bgmAppPlayer;
+
+    bgmAppPlayer.updateNowPlayingCaption = function() {
+        var item = bgmAppGetItem(playing);
+        updateTitleCaption(item ? item.title : "", item ? item.comment : "");
+    } incontextof bgmAppPlayer;
+
+    bgmAppPlayer.prevNext = function(forward) {
+        if (!count) return;
+        if (mode == "rnd" && playing !== void) {
+            randomMove(forward, 0);
+            return;
+        }
+        var index = getSidePos(findStorageNumber(playing !== void ? playing : lastplay), forward);
+        if (index >= 0 && index < count && isSeen(index)) play(storages[index], 0);
+    } incontextof bgmAppPlayer;
+
+    bgmAppPlayer.playNext = function() {
+        if (playing === void || !count) return;
+        switch (mode) {
+        case "rep": case "one":
+            play(playing, 0);
+            break;
+        case "all":
+            move(1, 0);
+            break;
+        case "rnd":
+            random(0);
+            break;
+        case "str":
+            var index = findStorageNumber(playing);
+            var nextIndex = getSidePos(index, 1);
+            if (nextIndex <= index || nextIndex < 0 || !isSeen(nextIndex)) stop();
+            else play(storages[nextIndex], 0);
+            break;
+        default:
+            stop();
+        }
+    } incontextof bgmAppPlayer;
+
+    // Native .sli looping is disabled for full-song repeat and list playback.
+    bgmAppPlayer.updateLoopFlag = function() {
+        kag.bgm.setLoop(0);
+    } incontextof bgmAppPlayer;
+
+    bgmAppPlayer.onSeekChange = function(seconds, dragging) {
+        if (_ignoreSeekChange) return;
+        if (dragging) bgmAppSeekTarget = seconds;
+        else if (_seekDragging && bgmAppSeekTarget !== void) seconds = bgmAppSeekTarget;
+        _seekDragging = dragging;
+        if (dragging) {
+            drawPlayTime(seconds, 1);
+            return;
+        }
+        var wasPaused = paused;
+        var duration = kag.bgm.buf1.totalTime;
+        var position = Math.max(0, Math.min(seconds * 1000, Math.max(0, duration - 1)));
+        // Paused decoder seeks are deferred until resume; the UI immediately
+        // shows the chosen target without briefly restoring audio playback.
+        if (wasPaused) bgmAppPausedSeek = position;
+        else {
+            bgmAppPausedSeek = void;
+            kag.bgm.buf1.position = position;
+        }
+        playtime = position / 1000;
+        // Use the decoder position as the clock; seeking never resumes playback.
+        tick = System.getTickCount();
+        pausedtick = 0;
+        timer.interval = 1000;
+        timer.enabled = !wasPaused;
+        drawPlayTime(playtime);
+        updateSeekPosition(playtime);
+    } incontextof bgmAppPlayer;
+
+    bgmAppPlayer.onTimer = function() {
+        var seek = kag.current.names.seek;
+        if (_seekDragging || (seek !== void && seek.Slider_dragging)) return;
+        tick = System.getTickCount();
+        timer.interval = 1000;
+        var seconds = getCurrentSeekPosition();
+        if (seconds !== void) playtime = seconds;
+        drawPlayTime(playtime);
+        updateSeekPosition(playtime);
+    } incontextof bgmAppPlayer;
+
+    bgmAppPlayer.onKeyDown = function(key, shift) {
+        if (!(shift & ssShiftCtrlAlt)) {
+            if (key == VK_SPACE || key == 0x4d || key == 0x53 || key == 0x46 || key == 0x43 || key == VK_LEFT || key == VK_RIGHT) {
+                if (shift & ssRepeat) return 1;
+                switch (key) {
+                case VK_SPACE: playpause(); break;
+                case 0x4d: togglePlayMode(); break;
+                case 0x53: stop(); break;
+                case 0x46: toggleFavorite(); break;
+                case 0x43: toggleFavoritesList(); break;
+                case VK_LEFT: prev(); break;
+                case VK_RIGHT: next(); break;
+                }
+                return 1;
+            }
+        }
+        return (this.bgmAppOriginalKey incontextof this)(key, shift);
+    } incontextof bgmAppPlayer;
+
+    // PageSheet registered the original function in its constructor. Replace
+    // that exact entry so finalization removes the same function we register.
+    kag.keyDownHook.remove(bgmAppPlayer.bgmAppOriginalKey, 1);
+    kag.keyDownHook.add(bgmAppPlayer.onKeyDown);
+}
+
+// UI loading happens after the gallery constructor; restore extended modes here.
+bgmAppPlayer.setFilter(bgmAppPlayer._filter, true);
+bgmAppPlayer.updateCurrentPlayMode();
+bgmAppPlayer.updateTitleCaption();
+Debug.message("BGM App MOD ready: mode=" + bgmAppPlayer.mode + ", tracks=" + bgmAppPlayer.count);
+} catch (bgmAppError) {
+    Debug.message("BGM App MOD installation failed: " + bgmAppError.message);
+}

@@ -1,0 +1,39 @@
+eval,soundmode,exp,this.toggle=true
+func,item,	sename,item
+stat,item,on,over_on
+func,item11,
+eval,names,call,global.Current.uiEval,replaceScrollItemButtons,item,item11,scroll
+func,slider,	onchangefunc,Current.func("onSliderChanged"),	vertical,true,	uipsdfix,true
+#
+tpov,playbts_loop,toggle
+tpov,playbts_next,button
+tpov,playbts_prev,button
+tpov,playbts_stop,button
+tpov,playbts_pause,toggle
+tpov,playbts_play,toggle
+#
+func,playbts_loop,	sename,item,	exp,Current.cmd("togglePlayMode"),	name,pmode
+func,playbts_next,	sename,item,	exp,Current.cmd("next"),		name,pnext
+func,playbts_prev,	sename,item,	exp,Current.cmd("prev"),		name,pprev
+func,playbts_stop,	sename,item,	exp,Current.cmd("stop"),		name,stop
+func,playbts_pause,	sename,item,	exp,Current.cmd("playpause"),		name,pause
+func,playbts_play,	sename,item,	exp,Current.cmd("play"),		name,play
+func,playbts,
+cref,playbts,playbts_loop,playbts_next,playbts_prev,playbts_stop,playbts_pause,playbts_play,
+func,subtab_s,		name,filter_all,	exp,Current.cmd("setFilter/all")
+func,subtab_b,		name,filter_bgm,	exp,Current.cmd("setFilter/bgm")
+func,subtab_v,		name,filter_vo,		exp,Current.cmd("setFilter/vo")
+cref,subtab,subtab_s,subtab_b,subtab_v
+rgrp,subtab,subtab_s,subtab_b,subtab_v
+func,pseek,	sename,item,	min,0, max,0,	onchangefunc,Current.prop("onSeekChange"),	uipsdfix,true,	jumpmode,true,	name,seek
+#
+file,achieve
+func,base,
+#
+file,ctrltitle
+file,ctrltitle2
+file,curtime
+file,totaltime
+#
+part,remove,item,item11
+eval,names,call,uiloadSysSE,soundmode

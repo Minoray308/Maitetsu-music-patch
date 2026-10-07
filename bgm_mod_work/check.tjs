@@ -1,0 +1,155 @@
+var report = [];
+function check(ok, message) { if (!ok) throw new Exception(message); report.add("PASS " + message); }
+var Storages = %[extractStorageName:function(storage){return storage;}];
+var tf = %[], sf = %[], ssShiftCtrlAlt = 14, ssRepeat = 16, VK_SPACE = 32, VK_LEFT = 37, VK_RIGHT = 39;
+var kag = %[keyDownHook: [], current: %[names: %[pmode: %[]]], bgm: %[buf1: %[totalTime: 10000, position: 0]], saveSystemVariables: function() {}];
+kag.bgm.resume = function() {}; kag.bgm.pause = function() {};
+kag.bgm.setLoop = function(value) { global.testLoop = value; };
+class CustomSoundMode {
+    var _mode = "one", playing = "B", lastplay = "A", count = 3;
+    var items = [%[title: "A", comment: ""], %[title: "B", comment: ""], %[title: "C", comment: ""]];
+    var storages = ["A", "B", "C"], randomSpool = [], lastPlayed = [];
+    var paused = 0, _ignoreSeekChange = 0, _seekDragging = 0, playtime = 0, tick = 0, pausedtick = 0, timer = %[];
+    var caption, titleCaption, action, isAnyPlaying = 1;
+    var _filter = "all", scutil = %[redraw: function(value) {}];
+    function filterStorage(storage) { return 1; }
+    function internalAddItem(item, line) { items.add(item); }
+    function reloadCsv() {}
+    function drawButtonText(target, rect, caption, options) { target.caption = caption; }
+    function CustomSoundMode() { kag.keyDownHook.add(onKeyDown); }
+    function finalize() { kag.keyDownHook.remove(onKeyDown, 1); }
+    property mode { getter() { return _mode; } setter(value) { _mode = value; updateLoopFlag(); } }
+    function updateTitleCaption(title, comment) { titleCaption = title; caption = comment; }
+    function drawCaption(target, title, active, index) { target.caption = title; }
+    function onKeyDown(key, shift) { return 0; }
+    function setFilter(value) {}
+    function onUiloaded(ui, names) {}
+    function findStorageNumber(storage) { return storages.find(storage); }
+    function getSidePos(index, forward) { return (index + (forward ? 1 : 2)) % count; }
+    function isSeen(index) { return index != 1; }
+    function play(storage, exchange) { action = storage; }
+    function stop() { action = "stop"; }
+    function move(forward, exchange) { action = "move"; }
+    function random(exchange) { action = "random"; }
+    function randomMove(forward, exchange) { action = "randomMove"; }
+    function resume() { paused = 0; }
+    function playpause() { action = "pause"; }
+    function prev() { prevNext(0); }
+    function next() { prevNext(1); }
+    function resetTimer(playing) {}
+    function updateSeekState(duration) { global.testSeekDuration = duration; }
+    function drawPlayTime(value, dragging) {}
+    function updateSeekPosition(value) {}
+    function getCurrentSeekPosition() { return kag.bgm.buf1.position / 1000; }
+}
+var testPlayer = new CustomSoundMode();
+// Match the game's manager/active-gallery boundary that caused the first crash.
+var Current = %[_object: testPlayer, action: function(name, value, dragging) {
+    return (global.Current._object[name] incontextof global.Current._object)(value, dragging);
+}];
+kag.current.names.seek = %[Slider_dragging: 0, position: 0, stopDrag: function() { this.Slider_dragging = 0; global.Current._object.onSeekChange(this.position, 0); this.position = 0; }];
+try {
+    Scripts.execStorage(System.exePath + "../../bgm_app_mod.tjs");
+    check(testPlayer.mode == "rep", "legacy single loop migration");
+    check(testPlayer.caption == "", "original song comment is untouched");
+    function mockButton() { return %[width:137,height:45,imageWidth:822,imageHeight:45,bgmAppAnchor:%[imageWidth:822,imageHeight:45],copyRect:function(x,y,source,sx,sy,w,h){global.testNativeCopies++;}]; }
+    global.testNativeCopies = 0;
+    kag.current.names.bgmAppMode=mockButton();kag.current.names.bgmAppFavorite=mockButton();kag.current.names.bgmAppList=mockButton();
+    testPlayer.bgmAppUpdateButtons();
+    check(global.testNativeCopies > 0, "buttons copy native artwork instead of opaque rectangles");
+    check(kag.current.names.bgmAppMode.caption=="单曲循环", "mode shown on independent button");
+    check(kag.current.names.bgmAppList.caption=="收藏列表" && kag.current.names.bgmAppList.enabled, "favorites entry always enabled");
+    check(kag.keyDownHook.count == 1 && kag.keyDownHook[0] == testPlayer.onKeyDown, "registered key handler replaced");
+    kag.keyDownHook[0](VK_RIGHT, 0); check(testPlayer.action == "C", "right key through registered handler");
+    kag.keyDownHook[0](VK_LEFT, 0); check(testPlayer.action == "A", "left key through registered handler");
+    testPlayer.togglePlayMode(); check(testPlayer.mode == "all", "sequential loop");
+    testPlayer.playNext(); check(testPlayer.action == "move", "sequential auto advance");
+    testPlayer.togglePlayMode(); testPlayer.playNext(); check(testPlayer.action == "random", "random playback");
+    testPlayer.togglePlayMode(); testPlayer.playing = "C"; testPlayer.playNext(); check(testPlayer.action == "stop", "sequential final track stops");
+    testPlayer.playing = "A"; testPlayer.playNext(); check(testPlayer.action == "stop", "locked track is excluded");
+    testPlayer.togglePlayMode(); testPlayer.playNext(); check(testPlayer.action == "stop", "single play stops");
+    testPlayer.togglePlayMode(); testPlayer.playNext(); check(testPlayer.action == "A", "full song repeat");
+    testPlayer.playing = void; testPlayer.lastplay = "B"; testPlayer.next(); check(testPlayer.action == "C", "next starts from stopped state");
+    testPlayer._seekDragging = 0; kag.current.names.seek.Slider_dragging = 1;
+    testPlayer.playtime = 4; kag.bgm.buf1.position = 9000;
+    testPlayer.onTimer();
+    check(testPlayer.playtime == 4, "native drag before first move blocks playback timer refresh");
+    kag.current.names.seek.Slider_dragging = 0; testPlayer.onTimer();
+    check(testPlayer.playtime == 9, "timer resumes after native drag finishes");
+    testPlayer.paused = 1; testPlayer.onSeekChange(8, 0); check(testPlayer.bgmAppPausedSeek == 8000 && testPlayer.playtime == 8 && !testPlayer.timer.enabled, "seek preserves pause");
+    var slider = kag.current.names.seek;
+    slider.Slider_dragging = 1; slider.position = 6;
+    testPlayer.onSeekChange(6, 1);
+    check(testPlayer.bgmAppPausedSeek == 8000 && testPlayer._seekDragging, "drag previews without changing audio");
+    slider.stopDrag();
+    check(testPlayer.bgmAppPausedSeek == 6000 && !testPlayer._seekDragging && !testPlayer.timer.enabled, "drag release commits and preserves pause");
+    testPlayer.onSeekChange(7, 1); testPlayer.onSeekChange(0, 0);
+    check(testPlayer.bgmAppPausedSeek == 7000 && !testPlayer._seekDragging, "release ignores stale native position");
+    testPlayer.resume(); check(kag.bgm.buf1.position == 7000 && testPlayer.bgmAppPausedSeek === void, "resume applies deferred seek");
+    testPlayer.paused = 1;
+    testPlayer.onSeekChange(20, 0); check(testPlayer.bgmAppPausedSeek == 9999, "seek clamps song end");
+    testPlayer.onSeekChange(-1, 0); check(testPlayer.bgmAppPausedSeek == 0, "seek clamps song start");
+    testPlayer.onKeyDown(VK_SPACE, 0); check(testPlayer.action == "pause", "space pauses");
+    kag.bgm.buf1.position = 1234;
+    testPlayer.onKeyDown(0x4a, 0); testPlayer.onKeyDown(0x4c, 0);
+    check(kag.bgm.buf1.position == 1234, "J and L do not seek");
+    testPlayer.action = "unchanged"; testPlayer.onKeyDown(VK_SPACE, ssRepeat); check(testPlayer.action == "unchanged", "held key does not retrigger");
+    testPlayer.count = 0; testPlayer.next(); testPlayer.playNext(); check(testPlayer.action == "unchanged", "empty playlist safe");
+    testPlayer.updateLoopFlag(); check(global.testLoop == 0, "native partial loop disabled");
+    testPlayer.randomSpool.add("A"); testPlayer.lastPlayed.add("A"); testPlayer.setFilter("vo");
+    check(!testPlayer.randomSpool.count && !testPlayer.lastPlayed.count, "filter clears random history");
+    testPlayer.count = 3; testPlayer.playing = "A";
+    testPlayer.onKeyDown(0x46, 0);
+    check(sf.bgmAppFavorites.find("A") >= 0, "F adds current unlocked song");
+    check(kag.current.names.bgmAppFavorite.toggle && kag.current.names.bgmAppFavorite.caption=="★ 已收藏", "favorite shown on independent button");
+    var starItem = %[storage: "A", title: "Song"];
+    testPlayer.internalAddItem(starItem, void);
+    check(starItem.title == "Song", "favorite song title is untouched");
+    var row = %[];
+    testPlayer.drawCaption(row, "Song", 0, 0);
+    check(row.caption == "★ Song" && starItem.title == "Song", "favorite marker rendered without mutating metadata");
+    testPlayer.items[0].comment = "Original comment";
+    testPlayer.items[0].totaltime = 180;
+    testPlayer.items[0].seenflag = "bgm_A"; sf.bgm_A = 1;
+    testPlayer.bgmAppItems["A"] = testPlayer.items[0];
+    var savedItems = []; savedItems.assign(testPlayer.items);
+    var savedStorages = []; savedStorages.assign(testPlayer.storages);
+    testPlayer.items.clear(); testPlayer.storages.clear(); testPlayer.count = 0;
+    testPlayer.setFilter("bgm");
+    check(testPlayer.titleCaption == "A" && testPlayer.caption == "Original comment" && testPlayer.playing == "A", "hidden playing song retains title and comment after filter");
+    testPlayer.updateNowPlaying("A.ogg");
+    check(testPlayer.titleCaption == "A" && testPlayer.caption == "Original comment" && global.testSeekDuration == 180, "hidden song replay retains metadata and seek duration");
+    testPlayer.updateTitleCaption();
+    check(testPlayer.titleCaption == "A", "generic caption refresh retains hidden playing metadata");
+    testPlayer.togglePlayMode();
+    check(testPlayer.titleCaption == "A", "mode update preserves hidden playing song metadata");
+    testPlayer.bgmAppItems["A"].seenflag = "bgm_A"; sf.bgm_A = 1;
+    check(testPlayer.bgmAppCanFavorite("A"), "hidden unlocked song can still be favorited");
+    testPlayer.items.assign(savedItems); testPlayer.storages.assign(savedStorages); testPlayer.count = 3;
+    testPlayer.onKeyDown(0x43, 0);
+    check(testPlayer.bgmAppFavoritesOnly && testPlayer.filterStorage("A") && !testPlayer.filterStorage("C"), "C lists favorites only");
+    check(kag.current.names.bgmAppList.toggle && kag.current.names.bgmAppList.caption=="返回全部", "favorites button exposes return state");
+    testPlayer.onKeyDown(0x46, 0);
+    check(!sf.bgmAppFavorites.count && testPlayer.action == "stop", "remove playing favorite stops and removes it");
+    testPlayer.drawCaption(row, "Song", 0, 0);
+    check(row.caption == "Song", "unfavorite removes list marker on redraw");
+    testPlayer.count = 0; testPlayer.action = "unchanged"; testPlayer.play();
+    check(testPlayer.action == "unchanged", "empty favorite list does not start audio");
+    testPlayer.setFilter("vo");
+    check(!testPlayer.bgmAppFavoritesOnly, "native category leaves favorites");
+    testPlayer.count = 3; testPlayer.playing = "B"; testPlayer.toggleFavorite();
+    check(!sf.bgmAppFavorites.count, "locked songs cannot be favorited");
+    testPlayer.playing = "A"; testPlayer.toggleFavorite();
+    invalidate(testPlayer);
+    check(kag.keyDownHook.count == 0, "gallery exit removes key handler");
+    testPlayer = new CustomSoundMode(); Current._object = testPlayer;
+    Scripts.execStorage(System.exePath + "../../bgm_app_mod.tjs");
+    check(kag.keyDownHook.count == 1, "gallery reentry has exactly one key handler");
+    check(sf.bgmAppFavorites.find("A") >= 0, "favorites survive gallery reentry");
+    kag.keyDownHook[0](VK_RIGHT, 0); check(testPlayer.action == "C", "right key after reentry");
+    invalidate(testPlayer); check(kag.keyDownHook.count == 0, "reentered gallery cleanup");
+    report.add("SUCCESS");
+} catch(e) { report.add("FAIL " + e.message + " " + Scripts.getTraceString()); }
+Debug.message(report.join("\n"));
+report.save(System.exePath + "check-result.txt");
+System.exit();
