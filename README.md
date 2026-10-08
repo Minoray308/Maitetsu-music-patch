@@ -51,4 +51,4 @@ powershell -ExecutionPolicy Bypass -File bgm_mod_work/build_installer.ps1
 ```
 
 构建只更新补丁和安装器。测试引擎、游戏原始资源、歌曲文件及存档不包含在仓库内；运行游戏与真实游戏回归需要自行安装游戏。
-## 仅供学习使用，侵权必删，严禁倒卖
+## 仅供学习使用，严禁倒卖；如有侵权，告知后删除
